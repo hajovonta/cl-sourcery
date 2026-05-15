@@ -1,45 +1,146 @@
 # cl-sourcery
 
-Transparent source capture for Common Lisp definitions.
+Transparent source capture for Common Lisp definitions via macro hijacking.
 
-## Overview
+Intercepts all standard CL definition forms (`defun`, `defmacro`, `defclass`, `defstruct`, etc.) to capture and store the exact source as written. Definitions are stored verbatim as lists with full metadata — enabling introspection, IDE tooling, and distributed system foundations without modifying existing code.
 
-cl-sourcery hijacks standard CL definition forms (`defun`, `defmacro`, `defvar`, `defparameter`, `defgeneric`, `defmethod`) to capture and store the exact source as written. This enables:
-
-- Full source introspection from a running image
-- IDE/GUI tools that display definitions verbatim
-- Foundation for distributed systems (paired with a REST exposure layer)
-
-## Usage
+## Quick Start
 
 ```lisp
 (ql:quickload :cl-sourcery)
 
-;; Activate hijack — all subsequent definitions are captured
+;; Activate — all subsequent definitions are captured transparently
 (cl-sourcery:activate)
 
-;; Define things normally
+;; Write normal CL code — nothing changes
 (defun add (a b) (+ a b))
 
-;; Retrieve the source
+(defclass person ()
+  ((name :initarg :name :accessor person-name)
+   (age :initarg :age :accessor person-age)))
+
+;; Retrieve exact source
 (cl-sourcery:get-source 'add)
-;; => #S(SOURCE-ENTRY :FORM (DEFUN ADD (A B) (+ A B)) ...)
+;; => #S(SOURCE-ENTRY
+;;      :FORM (DEFUN ADD (A B) (+ A B))
+;;      :TIMESTAMP 3953164800
+;;      :PACKAGE "COMMON-LISP-USER"
+;;      :FILE NIL
+;;      :TYPE :FUNCTION)
 
 ;; Deactivate when done
 (cl-sourcery:deactivate)
 ```
 
+## Features
+
+- **Zero-change adoption** — Activate once, all definitions in the image are captured. Existing libraries work unmodified.
+- **Verbatim source** — Stores the exact form as written, not what `function-lambda-expression` returns.
+- **Full metadata** — Timestamp, package, source file (`*load-pathname*` / `*compile-file-pathname*`), definition type.
+- **All definition forms** — 13 standard CL forms hijacked (see table below).
+- **Method-aware** — Methods keyed by `(name qualifiers . specializers)` — multiple methods per GF stored independently.
+- **Safe activation** — `activate`/`deactivate` cleanly install and restore original macros.
+
+## Captured Forms
+
+| Form | Type keyword | Key |
+|------|-------------|-----|
+| `defun` | `:function` | symbol |
+| `defmacro` | `:macro` | symbol |
+| `defvar` | `:variable` | symbol |
+| `defparameter` | `:parameter` | symbol |
+| `defconstant` | `:constant` | symbol |
+| `defgeneric` | `:generic` | symbol |
+| `defmethod` | `:method` | `(name qualifiers . specializers)` |
+| `defclass` | `:class` | symbol |
+| `defstruct` | `:struct` | symbol |
+| `define-condition` | `:condition` | symbol |
+| `deftype` | `:type` | symbol |
+| `defpackage` | `:package` | keyword |
+| `define-compiler-macro` | `:compiler-macro` | `(name . :compiler-macro)` |
+
 ## API
 
-- `(activate)` — Install hijack macros
-- `(deactivate)` — Restore original CL macros
-- `(active-p)` — Check if hijack is active
-- `(get-source symbol &optional type)` — Get source entry
-- `(get-all-sources symbol)` — Get all entries for a symbol
-- `(list-definitions &optional type)` — List all captured definitions
-- `(definition-count)` — Count of stored definitions
-- `(clear-registry)` — Wipe all stored definitions
-- `(remove-source symbol &optional type)` — Remove specific entry
+### Activation
+
+```lisp
+(cl-sourcery:activate)    ;; Install hijack macros
+(cl-sourcery:deactivate)  ;; Restore originals
+(cl-sourcery:active-p)    ;; Check status
+```
+
+### Query
+
+```lisp
+;; Get source entry for a symbol
+(cl-sourcery:get-source 'my-function)
+;; => #S(SOURCE-ENTRY ...)
+
+;; Get all method entries for a generic function
+(cl-sourcery:get-source 'my-gf :method)
+;; => (#S(SOURCE-ENTRY ...) #S(SOURCE-ENTRY ...))
+
+;; Get all entries (function + methods + generic) for a symbol
+(cl-sourcery:get-all-sources 'my-gf)
+
+;; List all captured definitions, optionally filtered by type
+(cl-sourcery:list-definitions)
+(cl-sourcery:list-definitions :function)
+
+;; Count
+(cl-sourcery:definition-count)
+```
+
+### Registry Management
+
+```lisp
+(cl-sourcery:clear-registry)              ;; Wipe all entries
+(cl-sourcery:remove-source 'sym)          ;; Remove specific entry
+(cl-sourcery:remove-source 'sym :method)  ;; Remove all methods for sym
+```
+
+### Entry Accessors
+
+```lisp
+(cl-sourcery:source-entry-form entry)       ;; The full source form (list)
+(cl-sourcery:source-entry-timestamp entry)  ;; Universal-time of definition
+(cl-sourcery:source-entry-package entry)    ;; Package name (string)
+(cl-sourcery:source-entry-file entry)       ;; Source file path or NIL
+(cl-sourcery:source-entry-type entry)       ;; Type keyword
+```
+
+## How It Works
+
+No source parsing. No reader tricks. The mechanism is simple:
+
+1. **`activate`** unlocks the `COMMON-LISP` package (via `sb-ext:unlock-package`)
+2. Saves the original `macro-function` for each definition form
+3. Installs new macro-functions that:
+   - Call the **saved original** macro-function to get the standard expansion
+   - Wrap it in `(progn (register-source ...) <original-expansion>)`
+4. **`deactivate`** restores the saved originals and re-locks the package
+
+The key insight: hijack macros never reference `cl:defun` etc. by symbol (which would recurse infinitely). Instead they `funcall` the saved original macro-function directly.
+
+## Use Cases
+
+- **IDE/GUI introspection** — Display definitions exactly as written
+- **Documentation generation** — Extract source for all exported symbols
+- **Hot-reload tracking** — Know what changed and when
+- **Foundation for RPC** — Paired with a REST layer, any captured function can be network-exposed
+- **Audit trail** — Track all definitions with timestamps and source files
+
+## Dependencies
+
+- SBCL (uses `sb-ext:unlock-package` / `sb-ext:lock-package`)
+
+## Tests
+
+```lisp
+(ql:quickload :cl-sourcery-tests)
+(fiveam:run! :cl-sourcery)
+;; 115 checks, all passing
+```
 
 ## License
 

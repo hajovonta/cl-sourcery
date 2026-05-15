@@ -70,7 +70,7 @@
     (return-from activate t))
   ;; Save originals
   (dolist (sym '(cl:defun cl:defmacro cl:defvar cl:defparameter
-                 cl:defgeneric cl:defmethod))
+                 cl:defgeneric cl:defmethod cl:defclass))
     (setf (gethash sym *original-macro-functions*)
           (macro-function sym)))
   ;; Unlock CL package and install hijacks
@@ -87,6 +87,8 @@
         (make-hijack-expander (gethash 'cl:defgeneric *original-macro-functions*) :generic))
   (setf (macro-function 'cl:defmethod)
         (make-method-hijack-expander (gethash 'cl:defmethod *original-macro-functions*)))
+  (setf (macro-function 'cl:defclass)
+        (make-hijack-expander (gethash 'cl:defclass *original-macro-functions*) :class))
   (sb-ext:lock-package :cl)
   (setf *active* t))
 
@@ -96,7 +98,7 @@
     (return-from deactivate t))
   (sb-ext:unlock-package :cl)
   (dolist (sym '(cl:defun cl:defmacro cl:defvar cl:defparameter
-                 cl:defgeneric cl:defmethod))
+                 cl:defgeneric cl:defmethod cl:defclass))
     (let ((original (gethash sym *original-macro-functions*)))
       (when original
         (setf (macro-function sym) original))))

@@ -5,4 +5,5 @@
                 :components ((:file "package")
                              (:file "suite-registry")
                              (:file "suite-hijack")
-                             (:file "suite-methods")))))
+                             (:file "suite-methods")
+                             (:file "suite-defclass")))))

@@ -62,15 +62,49 @@
                               ',form :method)
              ,original-expansion))))))
 
+(defun make-struct-hijack-expander (original-macro-fn)
+  "Create a macro-function for defstruct that extracts name from possibly-options form."
+  (lambda (form env)
+    (let* ((name-or-options (cadr form))
+           (name (if (consp name-or-options)
+                     (car name-or-options)
+                     name-or-options))
+           (original-expansion (funcall original-macro-fn form env)))
+      `(progn
+         (register-source ',name ',form :struct)
+         ,original-expansion))))
+
+(defun make-defpackage-hijack-expander (original-macro-fn)
+  "Create a macro-function for defpackage that keys by package keyword."
+  (lambda (form env)
+    (let* ((name (cadr form))
+           (key (intern (string name) :keyword))
+           (original-expansion (funcall original-macro-fn form env)))
+      `(progn
+         (register-source ,key ',form :package)
+         ,original-expansion))))
+
+(defun make-compiler-macro-hijack-expander (original-macro-fn)
+  "Create a macro-function for define-compiler-macro that keys by (name . :compiler-macro)."
+  (lambda (form env)
+    (let* ((name (cadr form))
+           (key (cons name :compiler-macro))
+           (original-expansion (funcall original-macro-fn form env)))
+      `(progn
+         (register-source ',key ',form :compiler-macro)
+         ,original-expansion))))
+
 ;;; --- Activation / Deactivation ---
 
 (defun activate ()
-  "Install hijack macros on CL:DEFUN, CL:DEFMACRO, CL:DEFVAR, CL:DEFPARAMETER, CL:DEFGENERIC, CL:DEFMETHOD."
+  "Install hijack macros on CL definition forms."
   (when *active*
     (return-from activate t))
   ;; Save originals
   (dolist (sym '(cl:defun cl:defmacro cl:defvar cl:defparameter
-                 cl:defgeneric cl:defmethod cl:defclass))
+                 cl:defgeneric cl:defmethod cl:defclass
+                 cl:defconstant cl:defstruct cl:define-condition
+                 cl:deftype cl:defpackage cl:define-compiler-macro))
     (setf (gethash sym *original-macro-functions*)
           (macro-function sym)))
   ;; Unlock CL package and install hijacks
@@ -89,6 +123,18 @@
         (make-method-hijack-expander (gethash 'cl:defmethod *original-macro-functions*)))
   (setf (macro-function 'cl:defclass)
         (make-hijack-expander (gethash 'cl:defclass *original-macro-functions*) :class))
+  (setf (macro-function 'cl:defconstant)
+        (make-hijack-expander (gethash 'cl:defconstant *original-macro-functions*) :constant))
+  (setf (macro-function 'cl:defstruct)
+        (make-struct-hijack-expander (gethash 'cl:defstruct *original-macro-functions*)))
+  (setf (macro-function 'cl:define-condition)
+        (make-hijack-expander (gethash 'cl:define-condition *original-macro-functions*) :condition))
+  (setf (macro-function 'cl:deftype)
+        (make-hijack-expander (gethash 'cl:deftype *original-macro-functions*) :type))
+  (setf (macro-function 'cl:defpackage)
+        (make-defpackage-hijack-expander (gethash 'cl:defpackage *original-macro-functions*)))
+  (setf (macro-function 'cl:define-compiler-macro)
+        (make-compiler-macro-hijack-expander (gethash 'cl:define-compiler-macro *original-macro-functions*)))
   (sb-ext:lock-package :cl)
   (setf *active* t))
 
@@ -98,7 +144,9 @@
     (return-from deactivate t))
   (sb-ext:unlock-package :cl)
   (dolist (sym '(cl:defun cl:defmacro cl:defvar cl:defparameter
-                 cl:defgeneric cl:defmethod cl:defclass))
+                 cl:defgeneric cl:defmethod cl:defclass
+                 cl:defconstant cl:defstruct cl:define-condition
+                 cl:deftype cl:defpackage cl:define-compiler-macro))
     (let ((original (gethash sym *original-macro-functions*)))
       (when original
         (setf (macro-function sym) original))))

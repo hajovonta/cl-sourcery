@@ -6,4 +6,5 @@
                              (:file "suite-registry")
                              (:file "suite-hijack")
                              (:file "suite-methods")
-                             (:file "suite-defclass")))))
+                             (:file "suite-defclass")
+                             (:file "suite-more-forms")))))

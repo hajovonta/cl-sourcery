@@ -4,6 +4,7 @@
   :license "MIT"
   :serial t
   :components ((:file "package")
+               (:file "compat")
                (:file "registry")
                (:file "reader")
                (:file "hijack")))

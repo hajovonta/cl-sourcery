@@ -130,9 +130,22 @@ The key insight: hijack macros never reference `cl:defun` etc. by symbol (which 
 - **Foundation for RPC** — Paired with a REST layer, any captured function can be network-exposed
 - **Audit trail** — Track all definitions with timestamps and source files
 
+## Compatibility
+
+Tested on SBCL. Portable to any implementation with package locks:
+
+- **SBCL** — `sb-ext:unlock-package` / `sb-ext:lock-package`
+- **CCL** — `ccl:package-lock`
+- **ECL** — `ext:package-lock`
+- **LispWorks** — `hcl:set-package-lock`
+- **Allegro CL** — `excl:package-lock`
+- **Clasp** — `ext:package-lock`
+
+Implementations without package locks (ABCL, etc.) work without any special handling.
+
 ## Dependencies
 
-- SBCL (uses `sb-ext:unlock-package` / `sb-ext:lock-package`)
+None. Pure Common Lisp (plus the implementation-specific package lock abstraction).
 
 ## Tests
 

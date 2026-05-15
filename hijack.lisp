@@ -115,7 +115,7 @@
     (setf (gethash sym *original-macro-functions*)
           (macro-function sym)))
   ;; Unlock CL package and install hijacks
-  (sb-ext:unlock-package :cl)
+  (unlock-cl-package)
   (setf (macro-function 'cl:defun)
         (make-hijack-expander (gethash 'cl:defun *original-macro-functions*) :function))
   (setf (macro-function 'cl:defmacro)
@@ -142,7 +142,7 @@
         (make-defpackage-hijack-expander (gethash 'cl:defpackage *original-macro-functions*)))
   (setf (macro-function 'cl:define-compiler-macro)
         (make-compiler-macro-hijack-expander (gethash 'cl:define-compiler-macro *original-macro-functions*)))
-  (sb-ext:lock-package :cl)
+  (lock-cl-package)
   (setf *active* t))
 
 (defun deactivate ()
@@ -152,7 +152,7 @@
   ;; Restore readtable
   (when *original-readtable*
     (setf *readtable* *original-readtable*))
-  (sb-ext:unlock-package :cl)
+  (unlock-cl-package)
   (dolist (sym '(cl:defun cl:defmacro cl:defvar cl:defparameter
                  cl:defgeneric cl:defmethod cl:defclass
                  cl:defconstant cl:defstruct cl:define-condition
@@ -160,6 +160,6 @@
     (let ((original (gethash sym *original-macro-functions*)))
       (when original
         (setf (macro-function sym) original))))
-  (sb-ext:lock-package :cl)
+  (lock-cl-package)
   (setf *active* nil)
   t)

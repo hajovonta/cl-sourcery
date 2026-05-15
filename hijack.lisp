@@ -21,7 +21,7 @@
     (let* ((name (cadr form))
            (original-expansion (funcall original-macro-fn form env)))
       `(progn
-         (register-source ',name ',form ,type)
+         (register-source ',name ',form ,type *last-source-text*)
          ,original-expansion))))
 
 ;;; --- Method specializer extraction ---
@@ -59,7 +59,7 @@
         (let ((specializers (extract-specializers lambda-list)))
           `(progn
              (register-source (method-key ',name '(,@qualifiers ,@specializers))
-                              ',form :method)
+                              ',form :method *last-source-text*)
              ,original-expansion))))))
 
 (defun make-struct-hijack-expander (original-macro-fn)
@@ -71,7 +71,7 @@
                      name-or-options))
            (original-expansion (funcall original-macro-fn form env)))
       `(progn
-         (register-source ',name ',form :struct)
+         (register-source ',name ',form :struct *last-source-text*)
          ,original-expansion))))
 
 (defun make-defpackage-hijack-expander (original-macro-fn)
@@ -81,7 +81,7 @@
            (key (intern (string name) :keyword))
            (original-expansion (funcall original-macro-fn form env)))
       `(progn
-         (register-source ,key ',form :package)
+         (register-source ,key ',form :package *last-source-text*)
          ,original-expansion))))
 
 (defun make-compiler-macro-hijack-expander (original-macro-fn)
@@ -91,15 +91,22 @@
            (key (cons name :compiler-macro))
            (original-expansion (funcall original-macro-fn form env)))
       `(progn
-         (register-source ',key ',form :compiler-macro)
+         (register-source ',key ',form :compiler-macro *last-source-text*)
          ,original-expansion))))
+
+(defvar *original-readtable* nil
+  "Saved readtable before activation.")
 
 ;;; --- Activation / Deactivation ---
 
 (defun activate ()
-  "Install hijack macros on CL definition forms."
+  "Install hijack macros on CL definition forms and source-preserving readtable."
   (when *active*
     (return-from activate t))
+  ;; Save original readtable
+  (setf *original-readtable* *readtable*)
+  ;; Install source-preserving readtable
+  (setf *readtable* *sourcery-readtable*)
   ;; Save originals
   (dolist (sym '(cl:defun cl:defmacro cl:defvar cl:defparameter
                  cl:defgeneric cl:defmethod cl:defclass
@@ -139,9 +146,12 @@
   (setf *active* t))
 
 (defun deactivate ()
-  "Restore original CL macros."
+  "Restore original CL macros and readtable."
   (unless *active*
     (return-from deactivate t))
+  ;; Restore readtable
+  (when *original-readtable*
+    (setf *readtable* *original-readtable*))
   (sb-ext:unlock-package :cl)
   (dolist (sym '(cl:defun cl:defmacro cl:defvar cl:defparameter
                  cl:defgeneric cl:defmethod cl:defclass

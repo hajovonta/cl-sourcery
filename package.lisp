@@ -8,6 +8,7 @@
    #:source-entry-package
    #:source-entry-file
    #:source-entry-type
+   #:source-entry-text
    ;; Query API
    #:get-source
    #:get-all-sources

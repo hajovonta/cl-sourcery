@@ -7,4 +7,5 @@
                              (:file "suite-hijack")
                              (:file "suite-methods")
                              (:file "suite-defclass")
-                             (:file "suite-more-forms")))))
+                             (:file "suite-more-forms")
+                             (:file "suite-source-text")))))

@@ -5,4 +5,5 @@
   :serial t
   :components ((:file "package")
                (:file "registry")
+               (:file "reader")
                (:file "hijack")))

@@ -5,6 +5,7 @@
 (defstruct source-entry
   "A captured definition."
   (form nil :type list)
+  (text nil :type (or null string))
   (timestamp 0 :type integer)
   (package "" :type string)
   (file nil :type (or null pathname string))
@@ -19,11 +20,12 @@
 
 ;;; --- Internal API ---
 
-(defun register-source (key form type)
+(defun register-source (key form type &optional text)
   "Store a source entry in the registry."
   (setf (gethash key *registry*)
         (make-source-entry
          :form form
+         :text text
          :timestamp (get-universal-time)
          :package (package-name *package*)
          :file (or *compile-file-pathname* *load-pathname*)

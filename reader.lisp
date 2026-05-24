@@ -47,34 +47,46 @@
                            (coerce result 'simple-string)))
                (vector-push-extend c result)
                (when (char= c #\Newline) (return)))))
-          ;; Character literal #\x — don't interpret next char
-          ;; Handled by checking if previous was #\ — actually we need
-          ;; to handle the #-dispatch case
-          ;; Block comment #| ... |#
-          ((char= ch #\|)
-           ;; Check if preceded by #
-           (when (and (> (length result) 1)
-                      (char= (aref result (- (length result) 2)) #\#))
-             (let ((nesting 1))
-               (loop
-                 (let ((c (read-char stream nil nil)))
-                   (unless c (return-from read-balanced-form
-                               (coerce result 'simple-string)))
-                   (vector-push-extend c result)
-                   (cond
-                     ((and (char= c #\|)
-                           (let ((next (peek-char nil stream nil nil)))
-                             (when (and next (char= next #\#))
-                               (vector-push-extend (read-char stream) result)
-                               t)))
-                      (decf nesting)
-                      (when (zerop nesting) (return)))
-                     ((and (char= c #\#)
-                           (let ((next (peek-char nil stream nil nil)))
-                             (when (and next (char= next #\|))
-                               (vector-push-extend (read-char stream) result)
-                               t)))
-                      (incf nesting))))))))
+          ;; # dispatch — handle character literals and block comments
+          ((char= ch #\#)
+           (let ((next (peek-char nil stream nil nil)))
+             (cond
+               ;; #\ character literal — consume the character name
+               ((and next (char= next #\\))
+                (vector-push-extend (read-char stream) result) ; consume backslash
+                (let ((c (read-char stream nil nil)))
+                  (when c
+                    (vector-push-extend c result)
+                    ;; If alphabetic, might be a named char like #\Newline
+                    (when (alpha-char-p c)
+                      (loop for nc = (peek-char nil stream nil nil)
+                            while (and nc (alphanumericp nc))
+                            do (vector-push-extend (read-char stream) result))))))
+               ;; #| block comment
+               ((and next (char= next #\|))
+                (vector-push-extend (read-char stream) result)
+                (let ((nesting 1))
+                  (loop
+                    (let ((c (read-char stream nil nil)))
+                      (unless c (return-from read-balanced-form
+                                  (coerce result 'simple-string)))
+                      (vector-push-extend c result)
+                      (cond
+                        ((and (char= c #\|)
+                              (let ((nc (peek-char nil stream nil nil)))
+                                (when (and nc (char= nc #\#))
+                                  (vector-push-extend (read-char stream) result)
+                                  t)))
+                         (decf nesting)
+                         (when (zerop nesting) (return)))
+                        ((and (char= c #\#)
+                              (let ((nc (peek-char nil stream nil nil)))
+                                (when (and nc (char= nc #\|))
+                                  (vector-push-extend (read-char stream) result)
+                                  t)))
+                         (incf nesting)))))))
+               ;; Other # dispatches — just continue (the char is already in result)
+               (t nil))))
           ;; Escaped symbol |...|
           ((char= ch #\|)
            (loop

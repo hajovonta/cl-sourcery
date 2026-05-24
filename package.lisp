@@ -20,4 +20,7 @@
    ;; Activation
    #:activate
    #:deactivate
-   #:active-p))
+   #:active-p
+   ;; Scanner
+   #:scan-file
+   #:scan-file-to-registry))

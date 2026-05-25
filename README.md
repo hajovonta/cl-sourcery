@@ -130,6 +130,32 @@ The key insight: hijack macros never reference `cl:defun` etc. by symbol (which 
 - **Foundation for RPC** — Paired with a REST layer, any captured function can be network-exposed
 - **Audit trail** — Track all definitions with timestamps and source files
 
+## File Scanner
+
+For projects already loaded (without hijack active), the scanner extracts source text directly from files:
+
+```lisp
+;; Scan a file — returns list of source-entry structs
+(cl-sourcery:scan-file #P"/path/to/my-file.lisp")
+
+;; Scan and populate the registry (for later lookup via get-source)
+(cl-sourcery:scan-file-to-registry #P"/path/to/my-file.lisp")
+```
+
+The scanner handles `in-package` forms, character literals (`#\"`), block comments (`#|...|#`), vector literals (`#(...)`), and read-eval (`#.`) gracefully.
+
+### Extending the Scanner
+
+Register custom definition forms via `*extra-definition-forms*`:
+
+```lisp
+;; Recognize CLIM's define-application-frame and define-command
+(push "define-application-frame" cl-sourcery:*extra-definition-forms*)
+(push "define-command" cl-sourcery:*extra-definition-forms*)
+```
+
+Forms listed here are treated like `defun` — the second element is used as the definition name. `alexandria:define-constant` is included by default.
+
 ## Compatibility
 
 Tested on SBCL. Portable to any implementation with package locks:
@@ -152,7 +178,7 @@ None. Pure Common Lisp (plus the implementation-specific package lock abstractio
 ```lisp
 (ql:quickload :cl-sourcery-tests)
 (fiveam:run! :cl-sourcery)
-;; 115 checks, all passing
+;; 146 checks, all passing
 ```
 
 ## License

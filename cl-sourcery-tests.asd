@@ -8,4 +8,5 @@
                              (:file "suite-methods")
                              (:file "suite-defclass")
                              (:file "suite-more-forms")
-                             (:file "suite-source-text")))))
+                             (:file "suite-source-text")
+                             (:file "suite-scanner")))))

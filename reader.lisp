@@ -47,7 +47,7 @@
                            (coerce result 'simple-string)))
                (vector-push-extend c result)
                (when (char= c #\Newline) (return)))))
-          ;; # dispatch — handle character literals and block comments
+          ;; # dispatch — handle reader macros that affect paren/quote tracking
           ((char= ch #\#)
            (let ((next (peek-char nil stream nil nil)))
              (cond
@@ -62,7 +62,7 @@
                       (loop for nc = (peek-char nil stream nil nil)
                             while (and nc (alphanumericp nc))
                             do (vector-push-extend (read-char stream) result))))))
-               ;; #| block comment
+               ;; #| block comment — nested, consume until matching |#
                ((and next (char= next #\|))
                 (vector-push-extend (read-char stream) result)
                 (let ((nesting 1))
@@ -85,7 +85,16 @@
                                   (vector-push-extend (read-char stream) result)
                                   t)))
                          (incf nesting)))))))
-               ;; Other # dispatches — just continue (the char is already in result)
+               ;; #( vector literal — opens a paren
+               ((and next (char= next #\())
+                (vector-push-extend (read-char stream) result)
+                (incf depth))
+               ;; #" — namestring syntax in some implementations, treat " as string
+               ((and next (char= next #\"))
+                ;; Don't consume — let the main loop handle " on next iteration
+                nil)
+               ;; All other # dispatches (#., #', #+, #-, #:, #x, #o, #b, #S, #A, #P, #n=, #n#)
+               ;; don't affect paren depth or quote state — just continue
                (t nil))))
           ;; Escaped symbol |...|
           ((char= ch #\|)

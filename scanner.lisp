@@ -42,6 +42,18 @@ Respects in-package forms to resolve symbols correctly."
                            :timestamp (file-write-date path)
                            :package (package-name *package*))
                           results))
+                   ;; Read failed but text looks like a definition — capture with partial info
+                   ((and (null form) (text-looks-like-definition-p text))
+                    (multiple-value-bind (type name) (extract-def-from-text text)
+                      (when name
+                        (push (make-source-entry
+                               :form (list type name)
+                               :text text
+                               :type (form-type type)
+                               :file path
+                               :timestamp (file-write-date path)
+                               :package (package-name *package*))
+                              results))))
                    ;; Otherwise skip
                    (t nil)))))
             ;; Reader macro dispatch (#)
@@ -128,3 +140,26 @@ Uses PACKAGE as the initial package for symbol resolution during read."
       ((string-equal name "DEFINE-COMPILER-MACRO")
        (cons (car args) :compiler-macro))
       (t nil))))
+
+(defun text-looks-like-definition-p (text)
+  "Check if TEXT starts with a known definition form keyword."
+  (and (> (length text) 5)
+       (char= (char text 0) #\()
+       (let ((space (position #\Space text)))
+         (when space
+           (definition-form-p (subseq text 1 space))))))
+
+(defun extract-def-from-text (text)
+  "Extract the definition type symbol and name symbol from raw text.
+Returns (values type-symbol name-symbol) or NIL."
+  (let* ((space1 (position #\Space text))
+         (head (when space1 (subseq text 1 space1)))
+         (rest-start (when space1 (position-if-not (lambda (c) (member c '(#\Space #\Newline #\Tab #\Return)))
+                                                   text :start (1+ space1)))))
+    (when (and head rest-start)
+      (let* ((name-end (position-if (lambda (c) (member c '(#\Space #\( #\Newline #\Tab #\Return)))
+                                    text :start rest-start))
+             (name-str (subseq text rest-start (or name-end (length text))))
+             (type-sym (intern (string-upcase head) :cl))
+             (name-sym (intern (string-upcase name-str) *package*)))
+        (values type-sym name-sym)))))

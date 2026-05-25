@@ -79,13 +79,17 @@ Respects in-package forms to resolve symbols correctly."
          (read-line stream nil nil))
         (t (return))))))
 
+(defvar *extra-definition-forms* '("define-constant")
+  "Additional definition form names to recognize during scanning.")
+
 (defun definition-form-p (head)
   "Return T if HEAD names a definition form we should capture."
-  (member head '(defun defmacro defgeneric defmethod defclass
-                 defstruct defvar defparameter defconstant
-                 deftype defpackage define-condition
-                 define-compiler-macro define-method-combination)
-          :test #'string-equal))
+  (or (member head '(defun defmacro defgeneric defmethod defclass
+                     defstruct defvar defparameter defconstant
+                     deftype defpackage define-condition
+                     define-compiler-macro define-method-combination)
+              :test #'string-equal)
+      (member (string head) *extra-definition-forms* :test #'string-equal)))
 
 (defun form-type (head)
   "Map a definition form head to a keyword type."
@@ -103,6 +107,7 @@ Respects in-package forms to resolve symbols correctly."
     ((string-equal head "defpackage") :package)
     ((string-equal head "define-condition") :condition)
     ((string-equal head "define-compiler-macro") :compiler-macro)
+    ((string-equal head "define-constant") :constant)
     (t :other)))
 
 (defun scan-file-to-registry (pathname &optional (package *package*))
@@ -123,7 +128,8 @@ Uses PACKAGE as the initial package for symbol resolution during read."
   (let ((name (string head)))
     (cond
       ((member name '("DEFUN" "DEFMACRO" "DEFGENERIC" "DEFCLASS" "DEFTYPE"
-                       "DEFVAR" "DEFPARAMETER" "DEFCONSTANT" "DEFINE-CONDITION")
+                       "DEFVAR" "DEFPARAMETER" "DEFCONSTANT" "DEFINE-CONDITION"
+                       "DEFINE-CONSTANT")
                :test #'string-equal)
        (car args))
       ((string-equal name "DEFSTRUCT")

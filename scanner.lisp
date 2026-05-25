@@ -131,8 +131,7 @@ Uses PACKAGE as the initial package for symbol resolution during read."
   (let ((name (string head)))
     (cond
       ((member name '("DEFUN" "DEFMACRO" "DEFGENERIC" "DEFCLASS" "DEFTYPE"
-                       "DEFVAR" "DEFPARAMETER" "DEFCONSTANT" "DEFINE-CONDITION"
-                       "DEFINE-CONSTANT")
+                       "DEFVAR" "DEFPARAMETER" "DEFCONSTANT" "DEFINE-CONDITION")
                :test #'string-equal)
        (car args))
       ((string-equal name "DEFSTRUCT")
@@ -148,6 +147,9 @@ Uses PACKAGE as the initial package for symbol resolution during read."
        (intern (string (car args)) :keyword))
       ((string-equal name "DEFINE-COMPILER-MACRO")
        (cons (car args) :compiler-macro))
+      ;; Extra user-registered forms — default to (car args) as key
+      ((member name *extra-definition-forms* :test #'string-equal)
+       (car args))
       (t nil))))
 
 (defun text-looks-like-definition-p (text)

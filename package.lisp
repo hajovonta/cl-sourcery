@@ -24,4 +24,7 @@
    ;; Scanner
    #:scan-file
    #:scan-file-to-registry
-   #:*extra-definition-forms*))
+   #:*extra-definition-forms*
+   ;; Low-level reader utilities
+   #:read-balanced-form
+   #:skip-whitespace-and-comments))

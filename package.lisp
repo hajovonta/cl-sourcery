@@ -23,4 +23,5 @@
    #:active-p
    ;; Scanner
    #:scan-file
-   #:scan-file-to-registry))
+   #:scan-file-to-registry
+   #:*extra-definition-forms*))

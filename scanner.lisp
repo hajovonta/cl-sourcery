@@ -80,7 +80,10 @@ Respects in-package forms to resolve symbols correctly."
         (t (return))))))
 
 (defvar *extra-definition-forms* '("define-constant")
-  "Additional definition form names to recognize during scanning.")
+  "Additional definition form names to recognize during scanning.
+Push form names (strings, case-insensitive) to extend the scanner:
+  (push \"define-application-frame\" cl-sourcery:*extra-definition-forms*)
+Forms listed here are treated like defun — the second element is the name.")
 
 (defun definition-form-p (head)
   "Return T if HEAD names a definition form we should capture."

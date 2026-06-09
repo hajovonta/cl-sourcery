@@ -97,69 +97,139 @@
 (defvar *original-readtable* nil
   "Saved readtable before activation.")
 
+(defvar *activation-mode* nil
+  "The mode used for activation: :hijack or :conforming.")
+
+(defvar *original-macroexpand-hook* nil
+  "Saved *macroexpand-hook* before conforming mode activation.")
+
+(defvar *registering* nil
+  "Guard against re-entrant registration during nested macroexpansion.")
+
+;;; --- Conforming mode (macroexpand-hook) ---
+
+(defun definition-form-head-p (sym)
+  "Return the type keyword if SYM names a definition form, or NIL."
+  (case sym
+    (cl:defun :function)
+    (cl:defmacro :macro)
+    (cl:defvar :variable)
+    (cl:defparameter :parameter)
+    (cl:defconstant :constant)
+    (cl:defgeneric :generic)
+    (cl:defmethod :method)
+    (cl:defclass :class)
+    (cl:defstruct :struct)
+    (cl:define-condition :condition)
+    (cl:deftype :type)
+    (cl:defpackage :package)
+    (cl:define-compiler-macro :compiler-macro)
+    (t nil)))
+
+(defun extract-definition-key (form type)
+  "Extract the registry key from a definition FORM given its TYPE."
+  (case type
+    (:method
+     (let ((name (cadr form))
+           (rest (cddr form)))
+       (multiple-value-bind (qualifiers lambda-list)
+           (extract-qualifiers-and-lambda-list rest)
+         (let ((specs (extract-specializers lambda-list)))
+           (method-key name (append qualifiers specs))))))
+    (:struct
+     (let ((name-or-opts (cadr form)))
+       (if (consp name-or-opts) (car name-or-opts) name-or-opts)))
+    (:package
+     (intern (string (cadr form)) :keyword))
+    (:compiler-macro
+     (cons (cadr form) :compiler-macro))
+    (t (cadr form))))
+
+(defun sourcery-macroexpand-hook (expander form env)
+  "Macroexpand hook that intercepts definition forms and registers source."
+  (let ((expansion (funcall expander form env)))
+    (when (and (not *registering*) (consp form))
+      (let ((type (definition-form-head-p (car form))))
+        (when type
+          (let ((*registering* t))
+            (let ((key (extract-definition-key form type)))
+              (when key
+                (register-source key form type *last-source-text*)))))))
+    expansion))
+
 ;;; --- Activation / Deactivation ---
 
-(defun activate ()
-  "Install hijack macros on CL definition forms and source-preserving readtable."
+(defun activate (&key (mode :hijack))
+  "Install source capture. MODE is :hijack (default) or :conforming."
   (when *active*
     (return-from activate t))
-  ;; Save original readtable
+  ;; Save original readtable and install source-preserving one
   (setf *original-readtable* *readtable*)
-  ;; Install source-preserving readtable
   (setf *readtable* *sourcery-readtable*)
-  ;; Save originals
-  (dolist (sym '(cl:defun cl:defmacro cl:defvar cl:defparameter
-                 cl:defgeneric cl:defmethod cl:defclass
-                 cl:defconstant cl:defstruct cl:define-condition
-                 cl:deftype cl:defpackage cl:define-compiler-macro))
-    (setf (gethash sym *original-macro-functions*)
-          (macro-function sym)))
-  ;; Unlock CL package and install hijacks
-  (unlock-cl-package)
-  (setf (macro-function 'cl:defun)
-        (make-hijack-expander (gethash 'cl:defun *original-macro-functions*) :function))
-  (setf (macro-function 'cl:defmacro)
-        (make-hijack-expander (gethash 'cl:defmacro *original-macro-functions*) :macro))
-  (setf (macro-function 'cl:defvar)
-        (make-hijack-expander (gethash 'cl:defvar *original-macro-functions*) :variable))
-  (setf (macro-function 'cl:defparameter)
-        (make-hijack-expander (gethash 'cl:defparameter *original-macro-functions*) :parameter))
-  (setf (macro-function 'cl:defgeneric)
-        (make-hijack-expander (gethash 'cl:defgeneric *original-macro-functions*) :generic))
-  (setf (macro-function 'cl:defmethod)
-        (make-method-hijack-expander (gethash 'cl:defmethod *original-macro-functions*)))
-  (setf (macro-function 'cl:defclass)
-        (make-hijack-expander (gethash 'cl:defclass *original-macro-functions*) :class))
-  (setf (macro-function 'cl:defconstant)
-        (make-hijack-expander (gethash 'cl:defconstant *original-macro-functions*) :constant))
-  (setf (macro-function 'cl:defstruct)
-        (make-struct-hijack-expander (gethash 'cl:defstruct *original-macro-functions*)))
-  (setf (macro-function 'cl:define-condition)
-        (make-hijack-expander (gethash 'cl:define-condition *original-macro-functions*) :condition))
-  (setf (macro-function 'cl:deftype)
-        (make-hijack-expander (gethash 'cl:deftype *original-macro-functions*) :type))
-  (setf (macro-function 'cl:defpackage)
-        (make-defpackage-hijack-expander (gethash 'cl:defpackage *original-macro-functions*)))
-  (setf (macro-function 'cl:define-compiler-macro)
-        (make-compiler-macro-hijack-expander (gethash 'cl:define-compiler-macro *original-macro-functions*)))
-  (lock-cl-package)
+  (setf *activation-mode* mode)
+  (ecase mode
+    (:hijack
+     ;; Save originals
+     (dolist (sym '(cl:defun cl:defmacro cl:defvar cl:defparameter
+                    cl:defgeneric cl:defmethod cl:defclass
+                    cl:defconstant cl:defstruct cl:define-condition
+                    cl:deftype cl:defpackage cl:define-compiler-macro))
+       (setf (gethash sym *original-macro-functions*)
+             (macro-function sym)))
+     ;; Unlock CL package and install hijacks
+     (unlock-cl-package)
+     (setf (macro-function 'cl:defun)
+           (make-hijack-expander (gethash 'cl:defun *original-macro-functions*) :function))
+     (setf (macro-function 'cl:defmacro)
+           (make-hijack-expander (gethash 'cl:defmacro *original-macro-functions*) :macro))
+     (setf (macro-function 'cl:defvar)
+           (make-hijack-expander (gethash 'cl:defvar *original-macro-functions*) :variable))
+     (setf (macro-function 'cl:defparameter)
+           (make-hijack-expander (gethash 'cl:defparameter *original-macro-functions*) :parameter))
+     (setf (macro-function 'cl:defgeneric)
+           (make-hijack-expander (gethash 'cl:defgeneric *original-macro-functions*) :generic))
+     (setf (macro-function 'cl:defmethod)
+           (make-method-hijack-expander (gethash 'cl:defmethod *original-macro-functions*)))
+     (setf (macro-function 'cl:defclass)
+           (make-hijack-expander (gethash 'cl:defclass *original-macro-functions*) :class))
+     (setf (macro-function 'cl:defconstant)
+           (make-hijack-expander (gethash 'cl:defconstant *original-macro-functions*) :constant))
+     (setf (macro-function 'cl:defstruct)
+           (make-struct-hijack-expander (gethash 'cl:defstruct *original-macro-functions*)))
+     (setf (macro-function 'cl:define-condition)
+           (make-hijack-expander (gethash 'cl:define-condition *original-macro-functions*) :condition))
+     (setf (macro-function 'cl:deftype)
+           (make-hijack-expander (gethash 'cl:deftype *original-macro-functions*) :type))
+     (setf (macro-function 'cl:defpackage)
+           (make-defpackage-hijack-expander (gethash 'cl:defpackage *original-macro-functions*)))
+     (setf (macro-function 'cl:define-compiler-macro)
+           (make-compiler-macro-hijack-expander (gethash 'cl:define-compiler-macro *original-macro-functions*)))
+     (lock-cl-package))
+    (:conforming
+     (setf *original-macroexpand-hook* *macroexpand-hook*)
+     (setf *macroexpand-hook* #'sourcery-macroexpand-hook)))
   (setf *active* t))
 
 (defun deactivate ()
-  "Restore original CL macros and readtable."
+  "Restore original CL macros/hook and readtable."
   (unless *active*
     (return-from deactivate t))
   ;; Restore readtable
   (when *original-readtable*
     (setf *readtable* *original-readtable*))
-  (unlock-cl-package)
-  (dolist (sym '(cl:defun cl:defmacro cl:defvar cl:defparameter
-                 cl:defgeneric cl:defmethod cl:defclass
-                 cl:defconstant cl:defstruct cl:define-condition
-                 cl:deftype cl:defpackage cl:define-compiler-macro))
-    (let ((original (gethash sym *original-macro-functions*)))
-      (when original
-        (setf (macro-function sym) original))))
-  (lock-cl-package)
+  (ecase *activation-mode*
+    (:hijack
+     (unlock-cl-package)
+     (dolist (sym '(cl:defun cl:defmacro cl:defvar cl:defparameter
+                    cl:defgeneric cl:defmethod cl:defclass
+                    cl:defconstant cl:defstruct cl:define-condition
+                    cl:deftype cl:defpackage cl:define-compiler-macro))
+       (let ((original (gethash sym *original-macro-functions*)))
+         (when original
+           (setf (macro-function sym) original))))
+     (lock-cl-package))
+    (:conforming
+     (setf *macroexpand-hook* (or *original-macroexpand-hook* #'funcall))))
   (setf *active* nil)
+  (setf *activation-mode* nil)
   t)

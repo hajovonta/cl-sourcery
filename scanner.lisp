@@ -23,7 +23,10 @@ Respects in-package forms to resolve symbols correctly."
              (read-char stream) ; consume the (
              (let ((text (read-balanced-form stream)))
                (let ((form (handler-case
-                               (let ((*read-eval* nil))
+                               (let ((*read-eval* nil)
+                                     (*readtable* (if *hardened-reader*
+                                                      (copy-readtable nil)
+                                                      *readtable*)))
                                  (read-from-string text))
                              (error () nil))))
                  (cond
@@ -84,6 +87,10 @@ Respects in-package forms to resolve symbols correctly."
 Push form names (strings, case-insensitive) to extend the scanner:
   (push \"define-application-frame\" cl-sourcery:*extra-definition-forms*)
 Forms listed here are treated like defun — the second element is the name.")
+
+(defvar *hardened-reader* nil
+  "When T, scan-file binds *readtable* to (copy-readtable nil) during read-from-string,
+preventing custom reader macros from executing. Use when scanning untrusted code.")
 
 (defun definition-form-p (head)
   "Return T if HEAD names a definition form we should capture."

@@ -9,4 +9,6 @@
                              (:file "suite-defclass")
                              (:file "suite-more-forms")
                              (:file "suite-source-text")
-                             (:file "suite-scanner")))))
+                             (:file "suite-scanner")
+                             (:file "suite-version-history")
+                             (:file "suite-hardened")))))

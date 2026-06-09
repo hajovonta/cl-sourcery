@@ -17,6 +17,9 @@
    ;; Registry management
    #:clear-registry
    #:remove-source
+   ;; Version history
+   #:*keep-history*
+   #:get-source-history
    ;; Activation
    #:activate
    #:deactivate
@@ -25,6 +28,7 @@
    #:scan-file
    #:scan-file-to-registry
    #:*extra-definition-forms*
+   #:*hardened-reader*
    ;; Low-level reader utilities
    #:read-balanced-form
    #:skip-whitespace-and-comments))

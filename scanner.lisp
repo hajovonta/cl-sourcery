@@ -5,10 +5,49 @@
 ;;; Scans a source file and extracts all toplevel definition forms
 ;;; with their raw text preserved. Does not require hijack to be active.
 
-(defun scan-file (pathname)
+(defun scan-file (pathname &key all-branches)
   "Scan PATHNAME for toplevel definition forms. Returns a list of source-entry structs.
 Each entry has :text (raw source), :form (parsed), :type, and :file set.
-Respects in-package forms to resolve symbols correctly."
+Respects in-package forms to resolve symbols correctly.
+When ALL-BRANCHES is true, scans twice — second pass uses a patched readtable
+where #+ and #- always read both branches, capturing platform-guarded forms."
+  (let ((results (scan-file-once pathname)))
+    (if all-branches
+        (let* ((alt-results (scan-file-all-branches pathname))
+               (seen (make-hash-table :test 'equal)))
+          (dolist (r results)
+            (setf (gethash (prin1-to-string (source-entry-form r)) seen) t))
+          (dolist (r alt-results)
+            (unless (gethash (prin1-to-string (source-entry-form r)) seen)
+              (push r results)))
+          results)
+        results)))
+
+(defun make-all-branches-readtable ()
+  "Create a readtable where #+ and #- always read the form (never skip).
+The feature expression is read and discarded."
+  (let ((rt (copy-readtable nil)))
+    (set-dispatch-macro-character #\# #\+
+      (lambda (stream char n)
+        (declare (ignore char n))
+        (read stream t nil t)
+        (read stream t nil t))
+      rt)
+    (set-dispatch-macro-character #\# #\-
+      (lambda (stream char n)
+        (declare (ignore char n))
+        (read stream t nil t)
+        (read stream t nil t))
+      rt)
+    rt))
+
+(defun scan-file-all-branches (pathname)
+  "Scan with patched readtable that captures all #+/- branches."
+  (let ((*readtable* (make-all-branches-readtable)))
+    (scan-file-once pathname)))
+
+(defun scan-file-once (pathname)
+  "Single-pass scan of PATHNAME for toplevel definition forms."
   (let ((results '())
         (path (pathname pathname))
         (*package* *package*))

@@ -64,12 +64,47 @@ Respects in-package forms to resolve symbols correctly."
                    (t nil)))))
             ;; Reader macro dispatch (#)
             ((char= ch #\#)
-             (handler-case (read stream)
-               (error () (read-char stream))))
+             (let ((form (handler-case
+                             (let ((*read-eval* nil))
+                               (read stream nil nil))
+                           (error () nil))))
+               (when (consp form)
+                 (cond
+                   ;; Direct definition after reader conditional: #+feat (defun ...)
+                   ((and (symbolp (car form))
+                         (definition-form-p (car form)))
+                    (push (make-source-entry
+                           :form form
+                           :text nil
+                           :type (form-type (car form))
+                           :file path
+                           :timestamp (file-write-date path)
+                           :package (package-name *package*))
+                          results))
+                   ;; progn wrapping definitions: #+feat (progn (defun ...) ...)
+                   ((and (symbolp (car form))
+                         (string-equal (car form) "progn"))
+                    (dolist (subform (cdr form))
+                      (when (and (consp subform)
+                                 (symbolp (car subform)))
+                        (cond
+                          ((string-equal (car subform) "in-package")
+                           (let ((pkg (find-package (cadr subform))))
+                             (when pkg (setf *package* pkg))))
+                          ((definition-form-p (car subform))
+                           (push (make-source-entry
+                                  :form subform
+                                  :text nil
+                                  :type (form-type (car subform))
+                                  :file path
+                                  :timestamp (file-write-date path)
+                                  :package (package-name *package*))
+                                 results))))))))))
             ;; Anything else — read and discard
             (t
-             (handler-case (read stream)
-               (error () (read-char stream))))))))
+             (handler-case (let ((*read-eval* nil))
+                             (read stream nil nil))
+               (error () (read-char stream nil nil))))))))
     (nreverse results)))
 
 (defun skip-whitespace-and-comments (stream)

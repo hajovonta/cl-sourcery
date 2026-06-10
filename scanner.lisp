@@ -13,15 +13,27 @@ When ALL-BRANCHES is true, scans twice — second pass uses a patched readtable
 where #+ and #- always read both branches, capturing platform-guarded forms."
   (let ((results (scan-file-once pathname)))
     (if all-branches
-        (let* ((alt-results (scan-file-all-branches pathname))
-               (seen (make-hash-table :test 'equal)))
-          (dolist (r results)
-            (setf (gethash (prin1-to-string (source-entry-form r)) seen) t))
-          (dolist (r alt-results)
-            (unless (gethash (prin1-to-string (source-entry-form r)) seen)
-              (push r results)))
-          results)
+        (handler-case
+            (let* ((alt-results (scan-file-all-branches pathname))
+                   (seen (make-hash-table :test 'equal)))
+              (dolist (r results)
+                (let ((key (entry-dedup-key r)))
+                  (when key (setf (gethash key seen) t))))
+              (dolist (r alt-results)
+                (let ((key (entry-dedup-key r)))
+                  (unless (or (null key) (gethash key seen))
+                    (push r results))))
+              results)
+          (storage-condition () results))
         results)))
+
+(defun entry-dedup-key (entry)
+  "Lightweight dedup key: type + name of defined symbol. Avoids printing deep forms."
+  (let ((form (source-entry-form entry)))
+    (when (and (consp form) (consp (cdr form)))
+      (let ((name (cadr form)))
+        (format nil "~A:~A" (source-entry-type entry)
+                (if (consp name) (car name) name))))))
 
 (defun make-all-branches-readtable ()
   "Create a readtable where #+ and #- always read the form (never skip).

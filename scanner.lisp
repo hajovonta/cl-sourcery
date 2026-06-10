@@ -32,11 +32,14 @@ Respects in-package forms to resolve symbols correctly."
                  (cond
                    ;; in-package — switch *package* for subsequent reads
                    ((and form (consp form)
+                         (symbolp (car form))
                          (string-equal (car form) "in-package"))
                     (let ((pkg (find-package (cadr form))))
                       (when pkg (setf *package* pkg))))
                    ;; Definition form — capture
-                   ((and form (consp form) (definition-form-p (car form)))
+                   ((and form (consp form)
+                         (symbolp (car form))
+                         (definition-form-p (car form)))
                     (push (make-source-entry
                            :form form
                            :text text

@@ -146,7 +146,11 @@
     (t (cadr form))))
 
 (defun sourcery-macroexpand-hook (expander form env)
-  "Macroexpand hook that intercepts definition forms and registers source."
+  "Macroexpand hook that intercepts definition forms and registers source.
+WARNING: This MUST remain a plain function (not a generic function).
+Using a GF here triggers a vicious metacircle in SBCL where GF dispatch
+requires macroexpansion, causing infinite recursion.
+See: https://bugs.launchpad.net/sbcl/+bug/1826607"
   (let ((expansion (funcall expander form env)))
     (when (and (not *registering*) (consp form))
       (let ((type (definition-form-head-p (car form))))

@@ -7,7 +7,19 @@
 ;;; whitespace, comments, and formatting.
 
 (defvar *last-source-text* nil
-  "The raw text of the most recently read list form. Thread-local via dynamic binding.")
+  "The raw text of the most recently read list form. Fallback for simple cases.")
+
+(defvar *source-text-map*
+  #+sbcl (make-hash-table :test 'eq :weakness :key)
+  #-sbcl (make-hash-table :test 'eq)
+  "Weak hash table mapping form cons cells (by EQ identity) to their source text.
+Keyed by the exact cons cell returned from read, so at expansion time we can
+retrieve the text for the specific form being expanded.")
+
+(defun get-source-text-for (form)
+  "Retrieve the source text associated with FORM, or *last-source-text* as fallback."
+  (or (gethash form *source-text-map*)
+      *last-source-text*))
 
 (defvar *sourcery-readtable* (copy-readtable nil)
   "Readtable with source-capturing ( reader macro.")
@@ -129,7 +141,11 @@
     (setf *last-source-text* text)
     ;; Now parse the captured text with the standard readtable
     (let ((*readtable* (copy-readtable nil)))
-      (read-from-string text))))
+      (let ((form (read-from-string text)))
+        ;; Associate this specific cons cell with its source text
+        (when (consp form)
+          (setf (gethash form *source-text-map*) text))
+        form))))
 
 ;; Install on our custom readtable
 (set-macro-character #\( #'sourcery-paren-reader nil *sourcery-readtable*)

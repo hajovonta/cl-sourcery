@@ -19,9 +19,10 @@
   "Create a macro-function that captures source then delegates to ORIGINAL-MACRO-FN."
   (lambda (form env)
     (let* ((name (cadr form))
+           (text (get-source-text-for form))
            (original-expansion (funcall original-macro-fn form env)))
       `(progn
-         (register-source ',name ',form ,type *last-source-text*)
+         (register-source ',name ',form ,type ,text)
          ,original-expansion))))
 
 ;;; --- Method specializer extraction ---
@@ -53,13 +54,14 @@
   (lambda (form env)
     (let* ((name (cadr form))
            (rest (cddr form))
+           (text (get-source-text-for form))
            (original-expansion (funcall original-macro-fn form env)))
       (multiple-value-bind (qualifiers lambda-list)
           (extract-qualifiers-and-lambda-list rest)
         (let ((specializers (extract-specializers lambda-list)))
           `(progn
              (register-source (method-key ',name '(,@qualifiers ,@specializers))
-                              ',form :method *last-source-text*)
+                              ',form :method ,text)
              ,original-expansion))))))
 
 (defun make-struct-hijack-expander (original-macro-fn)
@@ -69,9 +71,10 @@
            (name (if (consp name-or-options)
                      (car name-or-options)
                      name-or-options))
+           (text (get-source-text-for form))
            (original-expansion (funcall original-macro-fn form env)))
       `(progn
-         (register-source ',name ',form :struct *last-source-text*)
+         (register-source ',name ',form :struct ,text)
          ,original-expansion))))
 
 (defun make-defpackage-hijack-expander (original-macro-fn)
@@ -79,9 +82,10 @@
   (lambda (form env)
     (let* ((name (cadr form))
            (key (intern (string name) :keyword))
+           (text (get-source-text-for form))
            (original-expansion (funcall original-macro-fn form env)))
       `(progn
-         (register-source ,key ',form :package *last-source-text*)
+         (register-source ,key ',form :package ,text)
          ,original-expansion))))
 
 (defun make-compiler-macro-hijack-expander (original-macro-fn)
@@ -89,9 +93,10 @@
   (lambda (form env)
     (let* ((name (cadr form))
            (key (cons name :compiler-macro))
+           (text (get-source-text-for form))
            (original-expansion (funcall original-macro-fn form env)))
       `(progn
-         (register-source ',key ',form :compiler-macro *last-source-text*)
+         (register-source ',key ',form :compiler-macro ,text)
          ,original-expansion))))
 
 (defvar *original-readtable* nil
@@ -158,7 +163,7 @@ See: https://bugs.launchpad.net/sbcl/+bug/1826607"
           (let ((*registering* t))
             (let ((key (extract-definition-key form type)))
               (when key
-                (register-source key form type *last-source-text*)))))))
+                (register-source key form type (get-source-text-for form))))))))
     expansion))
 
 ;;; --- Activation / Deactivation ---

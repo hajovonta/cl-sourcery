@@ -58,11 +58,24 @@ The feature expression is read and discarded."
   (let ((*readtable* (make-all-branches-readtable)))
     (scan-file-once pathname)))
 
+(defun preamble-form-p (form)
+  "Return T if FORM is a preamble candidate — a toplevel form that should be attached to the next definition.
+Covers declaim, eval-when, and print-object methods."
+  (when (consp form)
+    (or (string-equal (car form) "declaim")
+        (string-equal (car form) "eval-when")
+        (and (string-equal (car form) "defmethod")
+             (>= (length form) 3)
+             (string-equal (second form) "print-object")))))
+
 (defun scan-file-once (pathname)
-  "Single-pass scan of PATHNAME for toplevel definition forms."
+  "Single-pass scan of PATHNAME for toplevel definition forms.
+Preamble forms (declaim, eval-when, print-object methods) immediately preceding a definition
+are captured in the source-entry's preamble slot."
   (let ((results '())
         (path (pathname pathname))
-        (*package* *package*))
+        (*package* *package*)
+        (pending-preamble nil))
     (with-open-file (stream path :direction :input)
       (loop
         (skip-whitespace-and-comments stream)
@@ -86,19 +99,22 @@ The feature expression is read and discarded."
                          (symbolp (car form))
                          (string-equal (car form) "in-package"))
                     (let ((pkg (find-package (cadr form))))
-                      (when pkg (setf *package* pkg))))
-                   ;; Definition form — capture
+                      (when pkg (setf *package* pkg)))
+                    (setf pending-preamble nil))
+                   ;; Definition form — capture (with any pending preamble)
                    ((and form (consp form)
                          (symbolp (car form))
                          (definition-form-p (car form)))
                     (push (make-source-entry
                            :form form
                            :text text
+                           :preamble pending-preamble
                            :type (form-type (car form))
                            :file path
                            :timestamp (file-write-date path)
                            :package (package-name *package*))
-                          results))
+                          results)
+                    (setf pending-preamble nil))
                    ;; Read failed but text looks like a definition — capture with partial info
                    ((and (null form) (text-looks-like-definition-p text))
                     (multiple-value-bind (type name) (extract-def-from-text text)
@@ -106,13 +122,21 @@ The feature expression is read and discarded."
                         (push (make-source-entry
                                :form (list type name)
                                :text text
+                               :preamble pending-preamble
                                :type (form-type type)
                                :file path
                                :timestamp (file-write-date path)
                                :package (package-name *package*))
-                              results))))
-                   ;; Otherwise skip
-                   (t nil)))))
+                              results)))
+                    (setf pending-preamble nil))
+                   ;; Preamble candidate — buffer for next definition
+                   ((preamble-form-p form)
+                    (setf pending-preamble
+                          (if pending-preamble
+                              (concatenate 'string pending-preamble (string #\Newline) text)
+                              text)))
+                   ;; Otherwise skip (flush preamble — unrelated form breaks the chain)
+                   (t (setf pending-preamble nil))))))
             ;; Reader macro dispatch (#)
             ((char= ch #\#)
              (let ((form (handler-case
@@ -127,11 +151,13 @@ The feature expression is read and discarded."
                     (push (make-source-entry
                            :form form
                            :text nil
+                           :preamble pending-preamble
                            :type (form-type (car form))
                            :file path
                            :timestamp (file-write-date path)
                            :package (package-name *package*))
-                          results))
+                          results)
+                    (setf pending-preamble nil))
                    ;; progn wrapping definitions: #+feat (progn (defun ...) ...)
                    ((and (symbolp (car form))
                          (string-equal (car form) "progn"))
@@ -146,16 +172,19 @@ The feature expression is read and discarded."
                            (push (make-source-entry
                                   :form subform
                                   :text nil
+                                  :preamble pending-preamble
                                   :type (form-type (car subform))
                                   :file path
                                   :timestamp (file-write-date path)
                                   :package (package-name *package*))
-                                 results))))))))))
+                                 results)))))
+                    (setf pending-preamble nil))))))
             ;; Anything else — read and discard
             (t
              (handler-case (let ((*read-eval* nil))
                              (read stream nil nil))
-               (error () (read-char stream nil nil))))))))
+               (error () (read-char stream nil nil)))
+             (setf pending-preamble nil))))))
     (nreverse results)))
 
 (defun skip-whitespace-and-comments (stream)

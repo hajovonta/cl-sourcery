@@ -6,6 +6,7 @@
   "A captured definition."
   (form nil :type list)
   (text nil :type (or null string))
+  (preamble nil :type (or null string))
   (timestamp 0 :type integer)
   (package "" :type string)
   (file nil :type (or null pathname string))

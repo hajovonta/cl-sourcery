@@ -9,6 +9,7 @@
    #:source-entry-file
    #:source-entry-type
    #:source-entry-text
+   #:source-entry-preamble
    ;; Query API
    #:get-source
    #:get-all-sources

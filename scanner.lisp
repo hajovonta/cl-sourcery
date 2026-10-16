@@ -5,6 +5,10 @@
 ;;; Scans a source file and extracts all toplevel definition forms
 ;;; with their raw text preserved. Does not require hijack to be active.
 
+(defvar *hardened-reader* nil
+  "When T, scan-file binds *readtable* to (copy-readtable nil) during read-from-string,
+preventing custom reader macros from executing. Use when scanning untrusted code.")
+
 (defun scan-file (pathname &key all-branches)
   "Scan PATHNAME for toplevel definition forms. Returns a list of source-entry structs.
 Each entry has :text (raw source), :form (parsed), :type, and :file set.
@@ -229,10 +233,6 @@ are captured in the source-entry's preamble slot."
 Push form names (strings, case-insensitive) to extend the scanner:
   (push \"define-application-frame\" cl-sourcery:*extra-definition-forms*)
 Forms listed here are treated like defun — the second element is the name.")
-
-(defvar *hardened-reader* nil
-  "When T, scan-file binds *readtable* to (copy-readtable nil) during read-from-string,
-preventing custom reader macros from executing. Use when scanning untrusted code.")
 
 (defun definition-form-p (head)
   "Return T if HEAD names a definition form we should capture."

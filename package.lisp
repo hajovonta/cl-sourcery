@@ -28,6 +28,7 @@
    ;; Scanner
    #:scan-file
    #:scan-file-to-registry
+   #:source-entry-from-text
    #:*extra-definition-forms*
    #:*hardened-reader*
    ;; Low-level reader utilities

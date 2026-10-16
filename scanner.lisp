@@ -27,6 +27,30 @@ where #+ and #- always read both branches, capturing platform-guarded forms."
           (storage-condition () results))
         results)))
 
+(defun source-entry-from-text (text &key file package timestamp)
+  "Build a single source-entry from raw TEXT (one definition form), without
+reading from a file. FILE is a label only (string or pathname, not required
+to exist) — stored in the :file slot for finding-location purposes.
+PACKAGE should be the form's home package name (string); defaults to
+*package*. Mirrors the per-form logic in SCAN-FILE-ONCE (same *read-eval* nil
+/ optional hardened-readtable discipline) but skips file-stream handling,
+in-package state tracking, and preamble capture (a single node has no
+preceding sibling forms to track)."
+  (let ((form (handler-case
+                  (let ((*read-eval* nil)
+                        (*readtable* (if *hardened-reader* (copy-readtable nil) *readtable*)))
+                    (read-from-string text))
+                (error () nil))))
+    (make-source-entry
+     :form form
+     :text text
+     :preamble nil
+     :type (when (and form (consp form) (symbolp (car form)))
+             (form-type (car form)))
+     :file (or file "<in-memory>")
+     :timestamp (or timestamp 0)
+     :package (or package (package-name *package*)))))
+
 (defun entry-dedup-key (entry)
   "Lightweight dedup key: type + name of defined symbol. Avoids printing deep forms."
   (let ((form (source-entry-form entry)))
